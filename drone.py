@@ -4,14 +4,18 @@
 This module contains the implementation of a drone simulator.
 
 The Drone class represents a drone and provides methods for controlling the drone's movements and camera.
+The Simulator class simulates the drone's movements on a turtle graphics screen based on received commands.
 
 Classes:
 - Drone: Represents a drone and provides methods for controlling the drone's movements and camera.
+- Simulator: Simulates the drone's movements on a turtle graphics screen based on received commands.
 """
 
 
 
 import socket
+import turtle
+from os import path
 
 from subprocess import run, CalledProcessError
 from cv2 import VideoCapture
@@ -57,6 +61,7 @@ class Drone:
         print(ascii_drone)
         print("Ready For Receiving Instructions")
         self.start_camera_listener()
+        self.takeoff = False
 
     def start_services(self) -> None:
         """
@@ -100,3 +105,120 @@ class Drone:
             cap.release()
             self.camera_socket.close()
             self.start_camera_listener()
+
+
+class Simulator:
+    """
+    Simulates the drone's movements on a turtle graphics screen based on received commands.
+
+    Attributes:
+    - arrow (turtle.Turtle): The turtle object representing the drone.
+    - socket (socket.socket): The socket used for receiving commands.
+
+    Methods:
+    - __init__: Initializes the Simulator object.
+    - move_drone: Moves the drone on the screen based on a command.
+    - listen: Listens for commands on a socket.
+    - simulate: Simulates the drone's movements based on received commands.
+    """
+
+    def __init__(self, drone: Drone) -> None:
+        """
+        Initializes the Simulator object.
+
+        Creates a turtle graphics screen and sets up the drone's initial position and appearance.
+        Starts listening for commands on a socket and simulates the drone's movements.
+
+        Args:
+        - drone (Drone): The Drone object to simulate.
+        """
+        screen = turtle.Screen()
+        screen.setup(1200, 700)
+        self.arrow = turtle.Turtle() # arrow is the drone
+        path.dirname(__file__)
+        turtle.register_shape(path.join(path.dirname(__file__), 'media', 'drone.gif'))
+        screen.bgpic(path.join(path.dirname(__file__), 'media', 'map.gif'))
+        turtle.bgcolor("black")
+        turtle.pencolor("red")
+        self.arrow.shape(path.join(path.dirname(__file__), 'media', 'drone.gif'))
+        self.arrow.shapesize(stretch_wid=2, stretch_len=2, outline=8)
+        self.socket = self.listen()
+        self.simulate(drone)
+
+
+    def move_drone(self, drone, direction) -> bool:
+        """
+        Moves the drone on the screen based on a direction.
+
+        If the drone is in the air, it moves the drone in the specified direction.
+
+        Args:
+        - drone (Drone): The Drone object.
+        - direction (str): The direction in which to move the drone.
+
+        Returns:
+        - Success: True if the drone is in the air and the direction is valid, False otherwise.
+        """
+        if drone.takeoff:
+            if direction == "up":
+                self.arrow.setheading(90)
+                self.arrow.forward(10)
+            elif direction == "down":
+                self.arrow.setheading(270)
+                self.arrow.forward(10)
+            elif direction == "right":
+                self.arrow.setheading(0)
+                self.arrow.forward(10)
+            elif direction == "left":
+                self.arrow.setheading(180)
+                self.arrow.forward(10)
+            return True
+        else:
+            print("Drone is not in the air. Please take off first.")
+            return False
+
+    def listen(self) -> socket.socket:
+        """
+        Listens for commands on a socket.
+
+        Returns:
+        - socket.socket: The socket used for receiving commands.
+        """
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.bind(("", PORT)) # listen on all interfaces, port 5556
+        return sock
+
+    def simulate(self, drone: Drone):
+        """
+        Simulates the drone's movements based on received commands.
+
+        Receives commands from the socket and performs corresponding actions.
+
+        Args:
+        - drone (Drone): The Drone object to simulate.
+        """
+        while True:
+            data, _ = self.socket.recvfrom(1024)
+            command = data.decode().strip().split(',')[-1] # 290717696
+
+            if command == "2907510942":
+                drone.turn_camera_on()
+            elif command == "290741696": # takeoff command
+                drone.takeoff = True
+            elif command == "290751696": # land command
+                drone.takeoff = False
+            else: 
+                if self.move_drone(drone, Drone.payload_messages[command]['operation']):
+                    print(f"Received payload [{command}]: {Drone.payload_messages[command]['print_message']}")
+                    
+                
+
+
+
+if __name__ == "__main__":
+    try:
+        reaper = Drone()
+        sim = Simulator(reaper)
+    except KeyboardInterrupt:
+        print("Exiting...")
+        exit(0)
